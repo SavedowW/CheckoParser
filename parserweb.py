@@ -1,7 +1,13 @@
 from bs4 import BeautifulSoup
 import requests
+import dearpygui.dearpygui as dpg
 
 webprefix = "https://checko.ru"
+regions = ("RU", "BY")
+region_links = ("https://checko.ru/company/select?code=all", "https://checko.ru/by/company/select?code=all")
+selected_region = 0
+list_categories = []
+list_categories_links = []
 
 def getHolderPlaceholder(link):
     return {
@@ -23,18 +29,20 @@ def getHolderPlaceholder(link):
         "registrator": "-"
     }
 
-# parsing main page
-'''url = "https://checko.ru/company/select?code=all"
-response = requests.get(url)
-bs = BeautifulSoup(response.text, "lxml")
-atags = bs.find_all("a", {"class": "link"})
-res = []
-k = 0
-for i in atags:
-    res.append((i.get_text(), i.get('href')))
+def get_activity_categories(url):
+    response = requests.get(url)
+    bs = BeautifulSoup(response.text, "lxml")
+    atags = bs.find_all("a", {"class": "link"})
+    list = []
+    links = []
+    for i in atags:
+        if (i.get_text() == "каталогом"):
+            continue
+        links.append((i.get_text(), i.get('href')))
+        list.append(i.get_text())
 
-for i in res:
-    print(i)'''
+    return list, links
+
 
 # parsing companies page
 '''url = "https://checko.ru/company/select?code=469000"
@@ -214,5 +222,38 @@ def parseCompaniesPages(baseurl, isRu):
         lst = lst + res
     return lst
 
-lst = parseCompaniesPages("https://checko.ru/company/select?code=841000", True)
-print(lst)
+def select_region(regname):
+    global selected_region, list_categories, list_categories_links
+    selected_region = regions.index(regname)
+    list_categories, list_categories_links = get_activity_categories(region_links[selected_region])
+    print(list_categories)
+
+def callback_select_country(sender, app_data):
+    print(f"sender is: {sender}")
+    print(f"app_data is: {app_data}")
+    select_region(app_data)
+    print(selected_region)
+
+#lst = parseCompaniesPages("https://checko.ru/company/select?code=841000", True)
+#print(lst)
+
+dpg.create_context()
+
+# Font from https://fonts-online.ru/fonts/noto-mono
+with dpg.font_registry():
+    with dpg.font("notomono-regular.ttf", 13, default_font=True, tag="Default font") as f:
+        dpg.add_font_range_hint(dpg.mvFontRangeHint_Cyrillic)
+dpg.bind_font("Default font")
+
+dpg.create_viewport(title='Custom Title', width=600, height=300)
+
+with dpg.window(label="Checko parser", width=550, height=250):
+    dpg.add_text("Hello, world")
+    dpg.add_combo(("RU", "BY"), label="Страна", callback=callback_select_country)
+    dpg.add_combo((), label="Категории", id=999)
+    dpg.add_button(label="Save")
+
+dpg.setup_dearpygui()
+dpg.show_viewport()
+dpg.start_dearpygui()
+dpg.destroy_context()
