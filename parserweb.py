@@ -1,11 +1,14 @@
 from bs4 import BeautifulSoup
 import requests
 import dearpygui.dearpygui as dpg
+from openpyxl import Workbook
 
 webprefix = "https://checko.ru"
 regions = ("RU", "BY")
 region_links = ("https://checko.ru/company/select?code=all", "https://checko.ru/by/company/select?code=all")
+target_file = "data.xlsx"
 selected_region = 0
+selected_activity = -1
 list_categories = []
 list_categories_links = []
 
@@ -21,6 +24,7 @@ def getHolderPlaceholder(link):
         "address": "-",
         "org_type": "-",
         "capital": "-",
+        "special_tax_mode": "-",
         "holder": "-",
         "avg_worker_count": "-",
         "phones": "-",
@@ -43,23 +47,84 @@ def get_activity_categories(url):
 
     return list, links
 
+def save_ru_data(filename, companies):
+    wb = Workbook()
+    ws = wb.active
+    ws["A1"] = "Ссылка"
+    ws["B1"] = "Название"
+    ws["C1"] = "ОГРН"
+    ws["D1"] = "ИНН"
+    ws["E1"] = "Дата регистрации"
+    ws["F1"] = "Вид деятельности"
+    ws["G1"] = "Юридический адрес"
+    ws["H1"] = "Организационно-правовая форма"
+    ws["I1"] = "Уставный капитал"
+    ws["J1"] = "Специальный налоговый режим"
+    ws["K1"] = "Держатель реестра акционеров"
+    ws["L1"] = "Среднесписочная численность работников"
+    ws["M1"] = "Почта"
+    ws["N1"] = "Телефон"
 
-# parsing companies page
-'''url = "https://checko.ru/company/select?code=469000"
-response = requests.get(url)
-bs = BeautifulSoup(response.text, "lxml")
-atags = bs.find_all("td", {"class": ""})
-lst = []
-for i in atags:
-    company = i.find("a", {"class": "link"})
-    if (company != None):
-        lst.append(company.get_text())
-        
-for i in lst:
-    print(i)'''
+    i = 2
+    for comp in companies:
+        itxt = str(i)
+        ws["A"+itxt] = comp["link"]
+        ws["B"+itxt] = comp["name"]
+        ws["C"+itxt] = comp["ogrn"]
+        ws["D"+itxt] = comp["inn"]
+        ws["E"+itxt] = comp["register_date"]
+        ws["F"+itxt] = comp["activity_type"]
+        ws["G"+itxt] = comp["address"]
+        ws["H"+itxt] = comp["org_type"]
+        ws["I"+itxt] = comp["capital"]
+        ws["J"+itxt] = comp["special_tax_mode"]
+        ws["K"+itxt] = comp["holder"]
+        ws["L"+itxt] = comp["avg_worker_count"]
+        ws["M"+itxt] = comp["emails"]
+        ws["N"+itxt] = comp["phones"]
+
+        i += 1
+
+    wb.save(target_file)
+
+def save_by_data(filename, companies):
+    wb = Workbook()
+    ws = wb.active
+    ws["A1"] = "Ссылка"
+    ws["B1"] = "Название"
+    ws["C1"] = "УНП"
+    ws["D1"] = "Дата регистрации"
+    ws["E1"] = "Основной вид деятельности"
+    ws["F1"] = "Юридический адрес"
+    ws["G1"] = "Текущий орган учета"
+    ws["H1"] = "Орган, принявший решение о регистрации"
+    ws["I1"] = "Почта"
+    ws["J1"] = "Телефон"
+
+    i = 2
+    for comp in companies:
+        itxt = str(i)
+        ws["A"+itxt] = comp["link"]
+        ws["B"+itxt] = comp["name"]
+        ws["C"+itxt] = comp["UNP"]
+        ws["D"+itxt] = comp["register_date"]
+        ws["E"+itxt] = comp["activity_type"]
+        ws["F"+itxt] = comp["address"]
+        ws["G"+itxt] = comp["current_gov"]
+        ws["H"+itxt] = comp["registrator"]
+        ws["I"+itxt] = comp["emails"]
+        ws["J"+itxt] = comp["phones"]
+
+        i += 1
+
+    wb.save(target_file)
+
+
+def add_output_message(str):
+    dpg.set_value("outputMessage", dpg.get_value("outputMessage") + "\n" + str)
 
 # parsing ru company page
-def getRuCompanyData(url):
+def get_ru_company_data(url):
     response = requests.get(url)
     holder = getHolderPlaceholder(url)
     bs = BeautifulSoup(response.text, "lxml")
@@ -135,7 +200,8 @@ def getRuCompanyData(url):
     return holder
 
 # parsing by company page
-def getByCompanyData(url):
+def get_by_company_data(url):
+    print("Called BY")
     response = requests.get(url)
     holder = getHolderPlaceholder(url)
     bs = BeautifulSoup(response.text, "lxml")
@@ -147,14 +213,16 @@ def getByCompanyData(url):
     holder["UNP"] = col_datas[1].find("strong", {"id": "copy-id"}).get_text()
     for data in col_datas:
         innerdivs = data.find_all("div")
-        if (len(innerdivs) >= 2):
+        if (len(innerdivs) >= 1):
             ttl = innerdivs[0].get_text()
+            print(ttl)
             if (ttl == "Дата регистрации"):
                 holder["register_date"] = innerdivs[1].get_text()
             if (ttl == "Основной вид деятельности"):
                 holder["activity_type"] = innerdivs[1].get_text()
             if (ttl == "Юридический адрес"):
-                holder["address"] = innerdivs[1].get_text()
+                holder["address"] = data.find_all("strong")[0].get_text()
+                print("Found address: " + holder["address"])
             if (ttl == "Текущий орган учёта"):
                 holder["current_gov"] = innerdivs[1].get_text()
 
@@ -195,7 +263,7 @@ def getByCompanyData(url):
     return holder
 
 # parsing single page
-def parseSingleCompaniesPage(url, isRu):
+def parse_single_companies_page(url, isRu):
     response = requests.get(url)
     bs = BeautifulSoup(response.text, "lxml")
     atags = bs.find_all("td", {"class": ""})
@@ -203,22 +271,23 @@ def parseSingleCompaniesPage(url, isRu):
     for i in atags:
         company = i.find("a", {"class": "link"})
         if (company != None):
+            add_output_message("Обработка компании " + company.get_text())
             cmpurl = webprefix + company["href"]
-            lst.append(getRuCompanyData(cmpurl) if isRu else getByCompanyData(cmpurl))
+            lst.append(get_ru_company_data(cmpurl) if isRu else get_by_company_data(cmpurl))
     
     return lst
 
 # parsing all pages from baseurl
-def parseCompaniesPages(baseurl, isRu):
+def parse_companies_pages(baseurl, isRu):
     lst = []
-    res = parseSingleCompaniesPage(baseurl, isRu)
+    res = parse_single_companies_page(baseurl, isRu)
     lst = lst + res
     i = 1
     while (len(res) > 0):
         i += 1
-        print("Page " + str(i))
+        add_output_message("Обработка страницы " + str(i))
         url = baseurl + "&page=" + str(i)
-        res = parseSingleCompaniesPage(url, isRu)
+        res = parse_single_companies_page(url, isRu)
         lst = lst + res
     return lst
 
@@ -226,16 +295,50 @@ def select_region(regname):
     global selected_region, list_categories, list_categories_links
     selected_region = regions.index(regname)
     list_categories, list_categories_links = get_activity_categories(region_links[selected_region])
-    print(list_categories)
+
+def select_category(catname):
+    global selected_region, list_categories, list_categories_links, selected_activity
+    idx = list_categories.index(catname)
+    url = list_categories_links[idx][1]
+    selected_activity = idx
+    print(url)
 
 def callback_select_country(sender, app_data):
+    global list_categories_links, list_categories, selected_region
+    select_region(app_data)
+    #dpg.add_combo(items = ("test1", "test2"), label="Категории")
+    dpg.configure_item("categoriescombo", items=list_categories, default_value=list_categories[0])
+    select_category(list_categories[0])
+
+def callback_select_activity(sender, app_data):
+    global selected_activity
     print(f"sender is: {sender}")
     print(f"app_data is: {app_data}")
-    select_region(app_data)
-    print(selected_region)
+    select_category(app_data)
 
-#lst = parseCompaniesPages("https://checko.ru/company/select?code=841000", True)
-#print(lst)
+def callback_select_file(sender, app_data):
+    global target_file
+    target_file = app_data["file_path_name"]
+    dpg.set_value("selectedFile", "Текущий файл: " + target_file)
+
+def callback_parse(sender, app_data):
+    if (len(list_categories) == 0 or len(list_categories_links) == 0):
+        return
+    
+    try:
+        add_output_message("Начат парсинг со следующими настройками:")
+        add_output_message("Регион: " + regions[selected_region])
+        add_output_message("Вид деятельности: " + list_categories[selected_activity])
+        lst = parse_companies_pages(webprefix + list_categories_links[selected_activity][1], selected_region == 0)
+        print(lst)
+        add_output_message("Парсинг окончен, сохраняем в файл")
+        if (selected_region == 0):
+            save_ru_data(target_file, lst)
+        else:
+            save_by_data(target_file, lst)
+    except Exception:
+        add_output_message("Возникла неопознанная ошибка")
+
 
 dpg.create_context()
 
@@ -245,13 +348,21 @@ with dpg.font_registry():
         dpg.add_font_range_hint(dpg.mvFontRangeHint_Cyrillic)
 dpg.bind_font("Default font")
 
-dpg.create_viewport(title='Custom Title', width=600, height=300)
+dpg.create_viewport(title='Custom Title', width=600, height=600)
 
-with dpg.window(label="Checko parser", width=550, height=250):
-    dpg.add_text("Hello, world")
+with dpg.file_dialog(directory_selector=False, show=False, callback=callback_select_file, id="file_dialog_id", width=500 ,height=400,):
+        dpg.add_file_extension("Source files (*.xlsx *.xls){.xlsx,.xls}", color=(0, 255, 255, 255))
+
+with dpg.window(label="Checko parser", width=580, height=200, pos=(2, 2)):
+    dpg.add_text("Выберите страну и вид деятельности")
     dpg.add_combo(("RU", "BY"), label="Страна", callback=callback_select_country)
-    dpg.add_combo((), label="Категории", id=999)
-    dpg.add_button(label="Save")
+    dpg.add_combo((), label="Категории", tag="categoriescombo", callback=callback_select_activity)
+    dpg.add_button(label="Выберите файл", callback=lambda: dpg.show_item("file_dialog_id"))
+    dpg.add_text(default_value="Текущий файл: " + target_file, tag="selectedFile")
+    dpg.add_button(label="СТАРТ", callback=callback_parse)
+
+with dpg.window(label="Log", width=580, height=355, pos=(2, 205)):
+    dpg.add_text(default_value="",tag="outputMessage")
 
 dpg.setup_dearpygui()
 dpg.show_viewport()

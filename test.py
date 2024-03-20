@@ -1,2 +1,8 @@
-tpl = (12, 654, 11, 354)
-print(tpl.index(12))
+from openpyxl import Workbook
+
+wb = Workbook()
+ws = wb.active
+
+ws["A1"] = 5.1
+ws["B15"] = "here"
+wb.save('data.xlsx')
