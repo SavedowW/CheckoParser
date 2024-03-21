@@ -286,9 +286,7 @@ def parse_single_companies_page(url, isRu):
 # parsing all pages from baseurl
 def parse_companies_pages(lst, baseurl, isRu):
     if (active_only):
-        print("Active only")
         baseurl += "&active=true"
-    print("Parsing baseurl: " + baseurl)
     res = parse_single_companies_page(baseurl, isRu)
     lst = lst + res
     i = 1
