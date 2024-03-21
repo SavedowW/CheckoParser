@@ -8,9 +8,8 @@ regions = ("RU", "BY")
 region_links = ("https://checko.ru/company/select?code=all", "https://checko.ru/by/company/select?code=all")
 target_file = "data.xlsx"
 selected_region = 0
-selected_activity = -1
-list_categories = []
 list_categories_links = []
+active_only = False
 
 def getHolderPlaceholder(link):
     return {
@@ -37,15 +36,13 @@ def get_activity_categories(url):
     response = requests.get(url)
     bs = BeautifulSoup(response.text, "lxml")
     atags = bs.find_all("a", {"class": "link"})
-    list = []
     links = []
     for i in atags:
         if (i.get_text() == "каталогом"):
             continue
-        links.append((i.get_text(), i.get('href')))
-        list.append(i.get_text())
+        links.append([i.get_text(), i.get('href'), False])
 
-    return list, links
+    return links
 
 def save_ru_data(filename, companies):
     wb = Workbook()
@@ -130,14 +127,19 @@ def get_ru_company_data(url):
     bs = BeautifulSoup(response.text, "lxml")
     basicsec = bs.find_all("section", {"id": "basic"})
     name = basicsec[0].find("p", {"class": "mb-4"})
-    holder["name"] = name.get_text()
+    if (name):
+        holder["name"] = name.get_text()
     divs = basicsec[0].find_all("div", {"class": "uk-width-1-2@m"})
     lcol = divs[0]
     rcol = divs[1]
 
     lcol_datas = lcol.find_all("div", {"class": "basic-data"})
-    holder["ogrn"] = lcol_datas[1].find("strong", {"id": "copy-ogrn"}).get_text()
-    holder["inn"] = lcol_datas[1].find("strong", {"id": "copy-inn"}).get_text()
+    ogrnelem = lcol_datas[1].find("strong", {"id": "copy-ogrn"})
+    if (ogrnelem):
+        holder["ogrn"] = ogrnelem.get_text()
+    innelem = lcol_datas[1].find("strong", {"id": "copy-inn"})
+    if (innelem):
+        holder["inn"] = innelem.get_text()
     for data in lcol_datas:
         innerdivs = data.find_all("div")
         if (len(innerdivs) >= 2):
@@ -207,10 +209,13 @@ def get_by_company_data(url):
     bs = BeautifulSoup(response.text, "lxml")
     basicsec = bs.find_all("section", {"id": "basic"})
     name = basicsec[0].find("p", {"class": "mb-4"})
-    holder["name"] = name.get_text()
+    if (name):
+        holder["name"] = name.get_text()
 
     col_datas = basicsec[0].find_all("div", {"class": "basic-data"})
-    holder["UNP"] = col_datas[1].find("strong", {"id": "copy-id"}).get_text()
+    unpelem = col_datas[1].find("strong", {"id": "copy-id"})
+    if (unpelem):
+        holder["UNP"] = unpelem.get_text()
     for data in col_datas:
         innerdivs = data.find_all("div")
         if (len(innerdivs) >= 1):
@@ -264,6 +269,7 @@ def get_by_company_data(url):
 
 # parsing single page
 def parse_single_companies_page(url, isRu):
+    print("Parsing url: " + url)
     response = requests.get(url)
     bs = BeautifulSoup(response.text, "lxml")
     atags = bs.find_all("td", {"class": ""})
@@ -278,8 +284,11 @@ def parse_single_companies_page(url, isRu):
     return lst
 
 # parsing all pages from baseurl
-def parse_companies_pages(baseurl, isRu):
-    lst = []
+def parse_companies_pages(lst, baseurl, isRu):
+    if (active_only):
+        print("Active only")
+        baseurl += "&active=true"
+    print("Parsing baseurl: " + baseurl)
     res = parse_single_companies_page(baseurl, isRu)
     lst = lst + res
     i = 1
@@ -292,52 +301,64 @@ def parse_companies_pages(baseurl, isRu):
     return lst
 
 def select_region(regname):
-    global selected_region, list_categories, list_categories_links
+    global selected_region, list_categories_links
     selected_region = regions.index(regname)
-    list_categories, list_categories_links = get_activity_categories(region_links[selected_region])
+    list_categories_links = get_activity_categories(region_links[selected_region])
 
-def select_category(catname):
-    global selected_region, list_categories, list_categories_links, selected_activity
-    idx = list_categories.index(catname)
-    url = list_categories_links[idx][1]
-    selected_activity = idx
-    print(url)
+def callback_selectable(sender, app_data, user_data):
+    global list_categories_links
+    print(f"Sender {sender}")
+    print(f"app_data {app_data}")
+    print(f"Row {user_data}")
+    list_categories_links[user_data][2] = app_data
 
 def callback_select_country(sender, app_data):
-    global list_categories_links, list_categories, selected_region
+    global list_categories_links, selected_region
     select_region(app_data)
-    #dpg.add_combo(items = ("test1", "test2"), label="Категории")
-    dpg.configure_item("categoriescombo", items=list_categories, default_value=list_categories[0])
-    select_category(list_categories[0])
 
-def callback_select_activity(sender, app_data):
-    global selected_activity
-    print(f"sender is: {sender}")
-    print(f"app_data is: {app_data}")
-    select_category(app_data)
+    dpg.show_item("categories_selector")
+    dpg.delete_item("cattbl", children_only=True, slot=1)
+    i = 0
+    for el in list_categories_links:
+        dpg.add_table_row(label="here2", parent="cattbl", tag="blbl" + str(i))
+        dpg.add_selectable(label=el[0], parent="blbl" + str(i), user_data=(i), callback=callback_selectable)
+        i += 1
 
 def callback_select_file(sender, app_data):
     global target_file
     target_file = app_data["file_path_name"]
     dpg.set_value("selectedFile", "Текущий файл: " + target_file)
 
+def callback_active_only(sender, app_data, user_data):
+    global active_only
+    active_only = app_data
+
 def callback_parse(sender, app_data):
-    if (len(list_categories) == 0 or len(list_categories_links) == 0):
+    if (len(list_categories_links) == 0):
         return
     
     try:
         add_output_message("Начат парсинг со следующими настройками:")
         add_output_message("Регион: " + regions[selected_region])
-        add_output_message("Вид деятельности: " + list_categories[selected_activity])
-        lst = parse_companies_pages(webprefix + list_categories_links[selected_activity][1], selected_region == 0)
+        add_output_message("Выбранные виды деятельности: ")
+        selected = []
+        for i in range(len(list_categories_links)):
+            if list_categories_links[i][2]:
+                selected.append(i)
+                add_output_message(list_categories_links[i][0])
+        lst = []
+        for i in selected:
+            add_output_message("Текущая категория: " + list_categories_links[i][0])
+            lst = parse_companies_pages(lst, webprefix + list_categories_links[i][1], selected_region == 0)
         print(lst)
         add_output_message("Парсинг окончен, сохраняем в файл")
         if (selected_region == 0):
             save_ru_data(target_file, lst)
         else:
             save_by_data(target_file, lst)
-    except Exception:
+    except Exception as ex:
         add_output_message("Возникла неопознанная ошибка")
+        add_output_message(str(ex))
 
 
 dpg.create_context()
@@ -348,20 +369,23 @@ with dpg.font_registry():
         dpg.add_font_range_hint(dpg.mvFontRangeHint_Cyrillic)
 dpg.bind_font("Default font")
 
-dpg.create_viewport(title='Custom Title', width=600, height=600)
-
-with dpg.file_dialog(directory_selector=False, show=False, callback=callback_select_file, id="file_dialog_id", width=500 ,height=400,):
+dpg.create_viewport(title='Custom Title', width=1280, height=720)
+with dpg.file_dialog(directory_selector=False, show=False, callback=callback_select_file, id="file_dialog_id", width=500, height=400):
         dpg.add_file_extension("Source files (*.xlsx *.xls){.xlsx,.xls}", color=(0, 255, 255, 255))
 
-with dpg.window(label="Checko parser", width=580, height=200, pos=(2, 2)):
+with dpg.window(label="Select categories", tag="categories_selector", show=False, width=618, height=677, pos=(644, 2)):
+    with dpg.table(header_row=True, tag="cattbl"):
+        dpg.add_table_column(label="Категории")
+
+with dpg.window(label="Checko parser", width=640, height=200, pos=(2, 2)):
     dpg.add_text("Выберите страну и вид деятельности")
     dpg.add_combo(("RU", "BY"), label="Страна", callback=callback_select_country)
-    dpg.add_combo((), label="Категории", tag="categoriescombo", callback=callback_select_activity)
     dpg.add_button(label="Выберите файл", callback=lambda: dpg.show_item("file_dialog_id"))
     dpg.add_text(default_value="Текущий файл: " + target_file, tag="selectedFile")
+    dpg.add_checkbox(label="Только действующие организации", callback=callback_active_only)
     dpg.add_button(label="СТАРТ", callback=callback_parse)
 
-with dpg.window(label="Log", width=580, height=355, pos=(2, 205)):
+with dpg.window(label="Log", width=640, height=474, pos=(2, 205)):
     dpg.add_text(default_value="",tag="outputMessage")
 
 dpg.setup_dearpygui()

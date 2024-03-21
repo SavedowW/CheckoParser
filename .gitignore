@@ -1,0 +1,5 @@
+/build/*
+/dist/*
+/*.xlsx
+/*.xls
+/test.py
