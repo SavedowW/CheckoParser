@@ -132,6 +132,9 @@ def get_ru_company_data(url):
     holder = getHolderPlaceholder(url)
     bs = BeautifulSoup(response.text, "lxml")
     basicsec = bs.find_all("section", {"id": "basic"})
+    if (len(basicsec) == 0):
+        add_output_message("Данные по компании отсутствуют")
+        return holder
     name = basicsec[0].find("p", {"class": "mb-4"})
     if (name):
         holder["name"] = name.get_text()
@@ -207,11 +210,13 @@ def get_ru_company_data(url):
 
 # parsing by company page
 def get_by_company_data(url):
-    print("Called BY")
     response = requests.get(url)
     holder = getHolderPlaceholder(url)
     bs = BeautifulSoup(response.text, "lxml")
     basicsec = bs.find_all("section", {"id": "basic"})
+    if (len(basicsec) == 0):
+        add_output_message("Данные по компании отсутствуют")
+        return holder
     name = basicsec[0].find("p", {"class": "mb-4"})
     if (name):
         holder["name"] = name.get_text()
@@ -324,9 +329,6 @@ def select_region(regname):
 
 def callback_selectable(sender, app_data, user_data):
     global list_categories_links
-    print(f"Sender {sender}")
-    print(f"app_data {app_data}")
-    print(f"Row {user_data}")
     list_categories_links[user_data][2] = app_data
 
 def callback_select_country(sender, app_data):
@@ -378,7 +380,6 @@ def callback_parse(sender, app_data):
                 add_output_message("Текущая подкатегория: " + subcat[1])
                 lst = parse_companies_pages(lst, webprefix + subcat[0], selected_region == 0)
 
-        print(lst)
         add_output_message("Парсинг окончен, сохраняем в файл")
         if (selected_region == 0):
             save_ru_data(target_file, lst)
