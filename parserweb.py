@@ -29,7 +29,9 @@ def getHolderPlaceholder(link):
         "phones": "-",
         "emails": "-",
         "current_gov": "-",
-        "registrator": "-"
+        "registrator": "-",
+        "head_position": "-",
+        "head_name": "-"
     }
 
 def get_activity_categories(url):
@@ -61,6 +63,8 @@ def save_ru_data(filename, companies):
     ws["L1"] = "Среднесписочная численность работников"
     ws["M1"] = "Почта"
     ws["N1"] = "Телефон"
+    ws["O1"] = "Должность представителя"
+    ws["P1"] = "ФИО представителя"
 
     i = 2
     for comp in companies:
@@ -79,6 +83,8 @@ def save_ru_data(filename, companies):
         ws["L"+itxt] = comp["avg_worker_count"]
         ws["M"+itxt] = comp["emails"]
         ws["N"+itxt] = comp["phones"]
+        ws["O"+itxt] = comp["head_position"]
+        ws["P"+itxt] = comp["head_name"]
 
         i += 1
 
@@ -129,18 +135,15 @@ def get_ru_company_data(url):
     name = basicsec[0].find("p", {"class": "mb-4"})
     if (name):
         holder["name"] = name.get_text()
-    divs = basicsec[0].find_all("div", {"class": "uk-width-1-2@m"})
-    lcol = divs[0]
-    rcol = divs[1]
 
-    lcol_datas = lcol.find_all("div", {"class": "basic-data"})
-    ogrnelem = lcol_datas[1].find("strong", {"id": "copy-ogrn"})
+    datas = basicsec[0].find_all("div", {"class": "basic-data"})
+    ogrnelem = basicsec[0].find("strong", {"id": "copy-ogrn"})
     if (ogrnelem):
         holder["ogrn"] = ogrnelem.get_text()
-    innelem = lcol_datas[1].find("strong", {"id": "copy-inn"})
+    innelem = basicsec[0].find("strong", {"id": "copy-inn"})
     if (innelem):
         holder["inn"] = innelem.get_text()
-    for data in lcol_datas:
+    for data in datas:
         innerdivs = data.find_all("div")
         if (len(innerdivs) >= 2):
             ttl = innerdivs[0].get_text()
@@ -159,20 +162,21 @@ def get_ru_company_data(url):
                 for i in spntodelete:
                     i.decompose()
                 holder["special_tax_mode"] = innerdivs[1].get_text()
-
-
-    rcol_datas = rcol.find_all("div", {"class": "basic-data"})
-    for data in rcol_datas:
-        innerdivs = data.find_all("div")
-        if (len(innerdivs) >= 2):
-            ttl = innerdivs[0].get_text()
-            if (ttl == "Держатель реестра акционеров"):
+            elif (ttl == "Держатель реестра акционеров"):
                 holder["holder"] = innerdivs[1].get_text()
-            if (ttl == "Среднесписочная численность работников"):
+            elif (ttl == "Среднесписочная численность работников"):
                 spntodelete = innerdivs[1].find_all("span")
                 for i in spntodelete:
                     i.decompose()
                 holder["avg_worker_count"] = innerdivs[1].get_text()
+        picscnt1 = len(data.find_all("picture"))
+        picscnt2 = len(data.find_all("a", {"data-type": "image"}))
+        if (picscnt1 > 0 or picscnt2 > 0):
+            titlediv = data.find("div", {"class": "uk-text-bold"})
+            namea = data.find("a", {"class": "link"})
+            if (titlediv and namea):
+                holder["head_position"] = titlediv.get_text()
+                holder["head_name"] = namea.get_text()
 
     contactssec = bs.find_all("section", {"id": "contacts"})
     if (len(contactssec) > 0):
@@ -267,6 +271,21 @@ def get_by_company_data(url):
 
     return holder
 
+def get_subcat_links(url):
+    response = requests.get(url)
+    bs = BeautifulSoup(response.text, "lxml")
+    subcatsdiv = bs.find_all("div", {"class": "sub-okveds"})
+    if (len(subcatsdiv) == 0):
+        subcatsdiv = bs.find_all("div", {"class": "sub-okeds"})
+    if (len(subcatsdiv) == 0):
+        return []
+    atags = subcatsdiv[0].find_all("a", {"class": "link"})
+    lst = []
+    for atag in atags:
+        lst.append((atag["href"], atag.get_text()))
+        lst = lst + get_subcat_links(webprefix + atag["href"])
+    return lst
+
 # parsing single page
 def parse_single_companies_page(url, isRu):
     print("Parsing url: " + url)
@@ -348,6 +367,17 @@ def callback_parse(sender, app_data):
         for i in selected:
             add_output_message("Текущая категория: " + list_categories_links[i][0])
             lst = parse_companies_pages(lst, webprefix + list_categories_links[i][1], selected_region == 0)
+
+            add_output_message("Ищем подкатегории...")
+            subcats = get_subcat_links(webprefix + list_categories_links[i][1])
+            add_output_message("Найденные подкатегории (" + str(len(subcats)) + "):")
+            for subcat in subcats:
+                add_output_message(subcat[1])
+            
+            for subcat in subcats:
+                add_output_message("Текущая подкатегория: " + subcat[1])
+                lst = parse_companies_pages(lst, webprefix + subcat[0], selected_region == 0)
+
         print(lst)
         add_output_message("Парсинг окончен, сохраняем в файл")
         if (selected_region == 0):
