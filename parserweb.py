@@ -9,6 +9,7 @@ region_links = ("https://checko.ru/company/select?code=all", "https://checko.ru/
 target_file = "data.xlsx"
 selected_region = 0
 list_categories_links = []
+list_categories_subcats_links = []
 active_only = False
 
 def getHolderPlaceholder(link):
@@ -128,11 +129,17 @@ def add_output_message(str):
 
 # parsing ru company page
 def get_ru_company_data(url):
+    print("CALLED RU PARSE")
+    print(url)
     response = requests.get(url)
+    print("Got request response")
     holder = getHolderPlaceholder(url)
+    print("Got placeholder")
     bs = BeautifulSoup(response.text, "lxml")
+    print("Parsed")
     basicsec = bs.find_all("section", {"id": "basic"})
     if (len(basicsec) == 0):
+        print("No company data")
         add_output_message("Данные по компании отсутствуют")
         return holder
     name = basicsec[0].find("p", {"class": "mb-4"})
@@ -150,6 +157,7 @@ def get_ru_company_data(url):
         innerdivs = data.find_all("div")
         if (len(innerdivs) >= 2):
             ttl = innerdivs[0].get_text()
+            print("ttl: " + str(ttl))
             if (ttl == "Дата регистрации"):
                 holder["register_date"] = innerdivs[1].get_text()
             elif (ttl == "Вид деятельности"):
@@ -206,15 +214,22 @@ def get_ru_company_data(url):
             holder["emails"] = emails_str
         else:
             holder["emails"] = "-"
+    print("Ended parsing")
     return holder
 
 # parsing by company page
 def get_by_company_data(url):
+    print("CALLED BY PARSE")
+    print(url)
     response = requests.get(url)
+    print("Got request response")
     holder = getHolderPlaceholder(url)
+    print("Got placeholder")
     bs = BeautifulSoup(response.text, "lxml")
+    print("Parsed")
     basicsec = bs.find_all("section", {"id": "basic"})
     if (len(basicsec) == 0):
+        print("No company data")
         add_output_message("Данные по компании отсутствуют")
         return holder
     name = basicsec[0].find("p", {"class": "mb-4"})
@@ -229,6 +244,7 @@ def get_by_company_data(url):
         innerdivs = data.find_all("div")
         if (len(innerdivs) >= 1):
             ttl = innerdivs[0].get_text()
+            print("ttl: " + str(ttl))
             print(ttl)
             if (ttl == "Дата регистрации"):
                 holder["register_date"] = innerdivs[1].get_text()
@@ -273,7 +289,7 @@ def get_by_company_data(url):
             holder["phones"] = phones_str
         else:
             holder["phones"] = "-"
-
+    print("Ended parsing")
     return holder
 
 def get_subcat_links(url):
@@ -287,7 +303,7 @@ def get_subcat_links(url):
     atags = subcatsdiv[0].find_all("a", {"class": "link"})
     lst = []
     for atag in atags:
-        lst.append((atag["href"], atag.get_text()))
+        lst.append([atag["href"], atag.get_text(), False])
         lst = lst + get_subcat_links(webprefix + atag["href"])
     return lst
 
@@ -331,11 +347,14 @@ def callback_selectable(sender, app_data, user_data):
     global list_categories_links
     list_categories_links[user_data][2] = app_data
 
+def callback_subcat_selectable(sender, app_data, user_data):
+    global list_categories_subcats_links
+    list_categories_subcats_links[user_data][2] = app_data
+
 def callback_select_country(sender, app_data):
     global list_categories_links, selected_region
     select_region(app_data)
 
-    dpg.show_item("categories_selector")
     dpg.delete_item("cattbl", children_only=True, slot=1)
     i = 0
     for el in list_categories_links:
@@ -359,26 +378,30 @@ def callback_parse(sender, app_data):
     try:
         add_output_message("Начат парсинг со следующими настройками:")
         add_output_message("Регион: " + regions[selected_region])
+
         add_output_message("Выбранные виды деятельности: ")
         selected = []
         for i in range(len(list_categories_links)):
             if list_categories_links[i][2]:
                 selected.append(i)
                 add_output_message(list_categories_links[i][0])
+
+        add_output_message("Выбранные подкатегории: ")
+        selected_subcats = []
+        for i in range(len(list_categories_subcats_links)):
+            if list_categories_subcats_links[i][2]:
+                selected_subcats.append(i)
+                add_output_message(list_categories_subcats_links[i][1])
+
+        print(selected)
         lst = []
         for i in selected:
             add_output_message("Текущая категория: " + list_categories_links[i][0])
             lst = parse_companies_pages(lst, webprefix + list_categories_links[i][1], selected_region == 0)
 
-            add_output_message("Ищем подкатегории...")
-            subcats = get_subcat_links(webprefix + list_categories_links[i][1])
-            add_output_message("Найденные подкатегории (" + str(len(subcats)) + "):")
-            for subcat in subcats:
-                add_output_message(subcat[1])
-            
-            for subcat in subcats:
-                add_output_message("Текущая подкатегория: " + subcat[1])
-                lst = parse_companies_pages(lst, webprefix + subcat[0], selected_region == 0)
+        for i in selected_subcats:
+            add_output_message("Текущая подкатегория: " + list_categories_subcats_links[i][1])
+            lst = parse_companies_pages(lst, webprefix + list_categories_subcats_links[i][0], selected_region == 0)
 
         add_output_message("Парсинг окончен, сохраняем в файл")
         if (selected_region == 0):
@@ -389,6 +412,20 @@ def callback_parse(sender, app_data):
         add_output_message("Возникла неопознанная ошибка")
         add_output_message(str(ex))
 
+def callback_update_subcategory_list(sender, app_data):
+    global list_categories_subcats_links
+    add_output_message("Обновляем список подкатегорий...")
+    dpg.delete_item("subcattbl", children_only=True, slot=1)
+    list_categories_subcats_links = []
+    for i in range(len(list_categories_links)):
+        if list_categories_links[i][2]:
+            list_categories_subcats_links = list_categories_subcats_links + get_subcat_links(webprefix + list_categories_links[i][1])
+    i = 0
+    for el in list_categories_subcats_links:
+        dpg.add_table_row(label="here2", parent="subcattbl", tag="subct" + str(i))
+        dpg.add_selectable(label=el[1], parent="subct" + str(i), user_data=(i), callback=callback_subcat_selectable)
+        i += 1
+    add_output_message("Список подкатегорий обновлен")
 
 dpg.create_context()
 
@@ -398,15 +435,20 @@ with dpg.font_registry():
         dpg.add_font_range_hint(dpg.mvFontRangeHint_Cyrillic)
 dpg.bind_font("Default font")
 
-dpg.create_viewport(title='Custom Title', width=1280, height=720)
+dpg.create_viewport(title='Custom Title', width=1660, height=720)
 with dpg.file_dialog(directory_selector=False, show=False, callback=callback_select_file, id="file_dialog_id", width=500, height=400):
         dpg.add_file_extension("Source files (*.xlsx *.xls){.xlsx,.xls}", color=(0, 255, 255, 255))
 
-with dpg.window(label="Select categories", tag="categories_selector", show=False, width=618, height=677, pos=(644, 2)):
+with dpg.window(label="Select categories", tag="categories_selector", width=618, height=677, pos=(404, 2)):
     with dpg.table(header_row=True, tag="cattbl"):
         dpg.add_table_column(label="Категории")
 
-with dpg.window(label="Checko parser", width=640, height=200, pos=(2, 2)):
+with dpg.window(label="Select subcategories", tag="subcategories_selector", width=618, height=677, pos=(1024, 2)):
+    dpg.add_button(label="Обновить подкатегории", callback=callback_update_subcategory_list)
+    with dpg.table(header_row=True, tag="subcattbl"):
+        dpg.add_table_column(label="Подкатегории")
+
+with dpg.window(label="Checko parser", width=400, height=200, pos=(2, 2)):
     dpg.add_text("Выберите страну и вид деятельности")
     dpg.add_combo(("RU", "BY"), label="Страна", callback=callback_select_country)
     dpg.add_button(label="Выберите файл", callback=lambda: dpg.show_item("file_dialog_id"))
@@ -414,7 +456,7 @@ with dpg.window(label="Checko parser", width=640, height=200, pos=(2, 2)):
     dpg.add_checkbox(label="Только действующие организации", callback=callback_active_only)
     dpg.add_button(label="СТАРТ", callback=callback_parse)
 
-with dpg.window(label="Log", width=640, height=474, pos=(2, 205)):
+with dpg.window(label="Log", width=400, height=474, pos=(2, 205)):
     dpg.add_text(default_value="",tag="outputMessage")
 
 dpg.setup_dearpygui()
