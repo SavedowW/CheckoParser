@@ -11,6 +11,7 @@ selected_region = 0
 list_categories_links = []
 list_categories_subcats_links = []
 active_only = False
+attempts = 10
 
 def getHolderPlaceholder(link):
     return {
@@ -132,7 +133,9 @@ def get_ru_company_data(url):
     print("CALLED RU PARSE")
     print(url)
     response = requests.get(url)
-    print("Got request response")
+    print("Got request response: " + str(response))
+    if (response.status_code != 200):
+        return False
     holder = getHolderPlaceholder(url)
     print("Got placeholder")
     bs = BeautifulSoup(response.text, "lxml")
@@ -222,7 +225,9 @@ def get_by_company_data(url):
     print("CALLED BY PARSE")
     print(url)
     response = requests.get(url)
-    print("Got request response")
+    print("Got request response: " + str(response))
+    if (response.status_code != 200):
+        return False
     holder = getHolderPlaceholder(url)
     print("Got placeholder")
     bs = BeautifulSoup(response.text, "lxml")
@@ -319,7 +324,15 @@ def parse_single_companies_page(url, isRu):
         if (company != None):
             add_output_message("Обработка компании " + company.get_text())
             cmpurl = webprefix + company["href"]
-            lst.append(get_ru_company_data(cmpurl) if isRu else get_by_company_data(cmpurl))
+            attempts_count = attempts
+            compres = False
+            while (attempts_count > 0 and compres == False):
+                compres = get_ru_company_data(cmpurl) if isRu else get_by_company_data(cmpurl)
+                attempts_count -= 1
+            if compres == False:
+                add_output_message("Не получилось получить данные о компании")
+            else:
+                lst.append(compres)
     
     return lst
 
