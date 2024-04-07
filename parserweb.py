@@ -2,6 +2,8 @@ from bs4 import BeautifulSoup
 import requests
 import dearpygui.dearpygui as dpg
 from openpyxl import Workbook
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 webprefix = "https://checko.ru"
 regions = ("RU", "BY")
@@ -12,6 +14,15 @@ list_categories_links = []
 list_categories_subcats_links = []
 active_only = False
 attempts = 10
+
+def getByURL(url):
+    session = requests.Session()
+    retry = Retry(connect=5, backoff_factor=1.0)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    return session.get(url)
 
 def getHolderPlaceholder(link):
     return {
@@ -37,7 +48,7 @@ def getHolderPlaceholder(link):
     }
 
 def get_activity_categories(url):
-    response = requests.get(url)
+    response = getByURL(url)
     bs = BeautifulSoup(response.text, "lxml")
     atags = bs.find_all("a", {"class": "link"})
     links = []
@@ -132,7 +143,7 @@ def add_output_message(str):
 def get_ru_company_data(url):
     print("CALLED RU PARSE")
     print(url)
-    response = requests.get(url)
+    response = getByURL(url)
     print("Got request response: " + str(response))
     if (response.status_code != 200):
         return False
@@ -224,7 +235,7 @@ def get_ru_company_data(url):
 def get_by_company_data(url):
     print("CALLED BY PARSE")
     print(url)
-    response = requests.get(url)
+    response = getByURL(url)
     print("Got request response: " + str(response))
     if (response.status_code != 200):
         return False
@@ -298,7 +309,7 @@ def get_by_company_data(url):
     return holder
 
 def get_subcat_links(url):
-    response = requests.get(url)
+    response = getByURL(url)
     bs = BeautifulSoup(response.text, "lxml")
     subcatsdiv = bs.find_all("div", {"class": "sub-okveds"})
     if (len(subcatsdiv) == 0):
@@ -315,7 +326,7 @@ def get_subcat_links(url):
 # parsing single page
 def parse_single_companies_page(url, isRu):
     print("Parsing url: " + url)
-    response = requests.get(url)
+    response = getByURL(url)
     bs = BeautifulSoup(response.text, "lxml")
     atags = bs.find_all("td", {"class": ""})
     lst = []
