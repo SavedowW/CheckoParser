@@ -18,6 +18,11 @@ attempts = 10
 
 country_regions = []
 list_country_regions = []
+selected_country_region = 0
+
+region_cities = []
+list_region_cities = []
+selected_region_city = 0
 
 def getByURL(url):
     session = requests.Session()
@@ -330,6 +335,7 @@ def get_subcat_links(url):
 # parsing single page
 def parse_single_companies_page(url, isRu):
     print("Parsing url: " + url)
+    add_output_message("Обработка страницы: " + url)
     response = getByURL(url)
     bs = BeautifulSoup(response.text, "lxml")
     atags = bs.find_all("td", {"class": ""})
@@ -355,6 +361,14 @@ def parse_single_companies_page(url, isRu):
 def parse_companies_pages(lst, baseurl, isRu):
     if (active_only):
         baseurl += "&active=true"
+    if (isRu):
+        regid = country_regions[selected_country_region][0]
+        if (regid != -1):
+            cityid = region_cities[selected_region_city][0]
+            if (cityid != -1):
+                baseurl += "&city=" + str(cityid)
+            else:
+                baseurl += "&region=" + str(regid)
     res = parse_single_companies_page(baseurl, isRu)
     lst = lst + res
     i = 1
@@ -387,18 +401,75 @@ def get_regions_list():
             
     return lst
 
+def get_cities_list():
+    regid = country_regions[selected_country_region][0]
+    url = webprefix + list_categories_links[0][1]
+    if (regid != -1):
+        url += "&region=" + str(regid)
+    print(url)
+    response = getByURL(url)
+    bs = BeautifulSoup(response.text, "lxml")
+    divs = bs.find_all("div", {"class": "data-select-dropdown"})
+    regionrawlst = divs[1].find_all("li")
+    lst = []
+    for el in regionrawlst:
+        elstr = str(el)
+        name = el.get_text()
+        num = 0
+        print(el)
+        if ("city_clear" in str(el)):
+            num = -1
+        else:
+            res = re.findall(r'(?<=city_select\()\d+(?=\))', elstr)
+            num = int(res[0])
+        lst.append([num, name])
+            
+    return lst
+
 def select_region(regname):
-    global selected_region, list_categories_links, country_regions, list_country_regions
+    global selected_region, list_categories_links, country_regions, list_country_regions, selected_country_region, region_cities, list_region_cities, selected_region_city
     selected_region = regions.index(regname)
+    add_output_message("Получаем список категорий...")
     list_categories_links = get_activity_categories(region_links[selected_region])
     if (regname == 'RU'):
+        add_output_message("Получаем список регионов...")
         country_regions = get_regions_list()
+        add_output_message("Данные загружены.")
         list_country_regions = [k for i, k in country_regions]
-        dpg.configure_item("regionscombo", items=list_country_regions, default_value=list_country_regions[0])
+        selected_country_region = 0
+        dpg.configure_item("regionscombo", items=list_country_regions, default_value=list_country_regions[selected_country_region])
+        region_cities = []
+        list_region_cities = []
+        selected_region_city = 0
+        dpg.configure_item("citiescombo", items=list_region_cities, default_value="")
     else:
+        add_output_message("Данные загружены.")
         country_regions = []
         list_country_regions = []
+        selected_country_region = 0
         dpg.configure_item("regionscombo", items=list_country_regions, default_value="")
+        region_cities = []
+        list_region_cities = []
+        selected_region_city = 0
+        dpg.configure_item("citiescombo", items=list_region_cities, default_value="")
+
+def select_country_region(sender, app_data):
+    global selected_country_region, region_cities, list_region_cities, selected_region_city
+    print(sender)
+    print(app_data)
+    selected_country_region = list_country_regions.index(app_data)
+    print(selected_country_region)
+    add_output_message("Получаем список городов...")
+    region_cities = get_cities_list()
+    add_output_message("Данные загружены.")
+    list_region_cities = [k for i, k in region_cities]
+    selected_region_city = 0
+    dpg.configure_item("citiescombo", items=list_region_cities, default_value=list_region_cities[selected_region_city])
+
+def select_region_city(sender, app_data):
+    global selected_region_city
+    selected_region_city = list_region_cities.index(app_data)
+    print(selected_region_city)
 
 def callback_selectable(sender, app_data, user_data):
     global list_categories_links
@@ -506,7 +577,8 @@ with dpg.window(label="Select subcategories", tag="subcategories_selector", widt
         dpg.add_table_column(label="Подкатегории")
 
 with dpg.window(label="Select region (RU only)", tag="region_selector", width=618, height=375, pos=(1024, 304)):
-    dpg.add_combo((), label="Регионы", tag="regionscombo")
+    dpg.add_combo((), label="Регионы", tag="regionscombo", callback=select_country_region)
+    dpg.add_combo((), label="Города", tag="citiescombo", callback=select_region_city)
 
 with dpg.window(label="Checko parser", width=400, height=200, pos=(2, 2)):
     dpg.add_text("Выберите страну и вид деятельности")
