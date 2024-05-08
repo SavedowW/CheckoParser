@@ -4,6 +4,7 @@ import dearpygui.dearpygui as dpg
 from openpyxl import Workbook
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import re
 
 webprefix = "https://checko.ru"
 regions = ("RU", "BY")
@@ -14,6 +15,9 @@ list_categories_links = []
 list_categories_subcats_links = []
 active_only = False
 attempts = 10
+
+country_regions = []
+list_country_regions = []
 
 def getByURL(url):
     session = requests.Session()
@@ -362,10 +366,39 @@ def parse_companies_pages(lst, baseurl, isRu):
         lst = lst + res
     return lst
 
+def get_regions_list():
+    url = webprefix + list_categories_links[0][1]
+    print(url)
+    response = getByURL(url)
+    bs = BeautifulSoup(response.text, "lxml")
+    divs = bs.find_all("div", {"class": "data-select-dropdown"})
+    regionrawlst = divs[0].find_all("li")
+    lst = []
+    for el in regionrawlst:
+        elstr = str(el)
+        name = el.get_text()
+        num = 0
+        if ("region_clear" in str(el)):
+            num = -1
+        else:
+            res = re.findall(r'(?<=region_select\(\')\d+(?=\'\))', elstr)
+            num = int(res[0])
+        lst.append([num, name])
+            
+    return lst
+
 def select_region(regname):
-    global selected_region, list_categories_links
+    global selected_region, list_categories_links, country_regions, list_country_regions
     selected_region = regions.index(regname)
     list_categories_links = get_activity_categories(region_links[selected_region])
+    if (regname == 'RU'):
+        country_regions = get_regions_list()
+        list_country_regions = [k for i, k in country_regions]
+        dpg.configure_item("regionscombo", items=list_country_regions, default_value=list_country_regions[0])
+    else:
+        country_regions = []
+        list_country_regions = []
+        dpg.configure_item("regionscombo", items=list_country_regions, default_value="")
 
 def callback_selectable(sender, app_data, user_data):
     global list_categories_links
@@ -467,10 +500,13 @@ with dpg.window(label="Select categories", tag="categories_selector", width=618,
     with dpg.table(header_row=True, tag="cattbl"):
         dpg.add_table_column(label="Категории")
 
-with dpg.window(label="Select subcategories", tag="subcategories_selector", width=618, height=677, pos=(1024, 2)):
+with dpg.window(label="Select subcategories", tag="subcategories_selector", width=618, height=300, pos=(1024, 2)):
     dpg.add_button(label="Обновить подкатегории", callback=callback_update_subcategory_list)
     with dpg.table(header_row=True, tag="subcattbl"):
         dpg.add_table_column(label="Подкатегории")
+
+with dpg.window(label="Select region (RU only)", tag="region_selector", width=618, height=375, pos=(1024, 304)):
+    dpg.add_combo((), label="Регионы", tag="regionscombo")
 
 with dpg.window(label="Checko parser", width=400, height=200, pos=(2, 2)):
     dpg.add_text("Выберите страну и вид деятельности")
