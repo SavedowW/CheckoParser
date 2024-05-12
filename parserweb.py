@@ -485,9 +485,11 @@ def callback_select_country(sender, app_data):
 
     dpg.delete_item("cattbl", children_only=True, slot=1)
     i = 0
+    s = ""
     for el in list_categories_links:
+        s = "blbl" + str(i)
         dpg.add_table_row(label="here2", parent="cattbl", tag="blbl" + str(i))
-        dpg.add_selectable(label=el[0], parent="blbl" + str(i), user_data=(i), callback=callback_selectable)
+        dpg.add_selectable(label=el[0], parent=s, tag = s + "el", user_data=(i), callback=callback_selectable)
         i += 1
 
 def callback_select_file(sender, app_data):
@@ -551,9 +553,21 @@ def callback_update_subcategory_list(sender, app_data):
     i = 0
     for el in list_categories_subcats_links:
         dpg.add_table_row(label="here2", parent="subcattbl", tag="subct" + str(i))
-        dpg.add_selectable(label=el[1], parent="subct" + str(i), user_data=(i), callback=callback_subcat_selectable)
+        dpg.add_selectable(label=el[1], parent="subct" + str(i), tag="subctel" + str(i), user_data=(i), callback=callback_subcat_selectable)
         i += 1
     add_output_message("Список подкатегорий обновлен")
+
+def callback_select_all_categories(sender, app_data):
+    global list_categories_links
+    for i in range(0, len(list_categories_links)):
+        dpg.set_value("blbl" + str(i) + "el", True)
+        list_categories_links[i][2] = True
+
+def callback_select_all_subcategories(sender, app_data):
+    global list_categories_subcats_links
+    for i in range(0, len(list_categories_subcats_links)):
+        dpg.set_value("subctel" + str(i), True)
+        list_categories_subcats_links[i][2] = True
 
 dpg.create_context()
 
@@ -570,11 +584,13 @@ with dpg.file_dialog(directory_selector=False, show=False, callback=callback_sel
 with dpg.window(label="Select categories", tag="categories_selector", width=618, height=677, pos=(404, 2)):
     with dpg.table(header_row=True, tag="cattbl"):
         dpg.add_table_column(label="Категории")
+    dpg.add_button(label="Выбрать все", callback=callback_select_all_categories)
 
 with dpg.window(label="Select subcategories", tag="subcategories_selector", width=618, height=300, pos=(1024, 2)):
     dpg.add_button(label="Обновить подкатегории", callback=callback_update_subcategory_list)
     with dpg.table(header_row=True, tag="subcattbl"):
         dpg.add_table_column(label="Подкатегории")
+    dpg.add_button(label="Выбрать все", callback=callback_select_all_subcategories)
 
 with dpg.window(label="Select region (RU only)", tag="region_selector", width=618, height=375, pos=(1024, 304)):
     dpg.add_combo((), label="Регионы", tag="regionscombo", callback=select_country_region)
