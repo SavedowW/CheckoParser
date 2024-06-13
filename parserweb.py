@@ -5,6 +5,12 @@ from openpyxl import Workbook
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import re
+from datetime import date
+
+current_date = (int(date.today().day), int(date.today().month), int(date.today().year))
+min_date = [current_date[0], current_date[1], current_date[2]]
+max_date = [current_date[0], current_date[1], current_date[2]]
+filter_by_date = False
 
 webprefix = "https://checko.ru"
 regions = ("RU", "BY")
@@ -24,6 +30,49 @@ region_cities = []
 list_region_cities = []
 selected_region_city = 0
 
+month_ids = {
+    "января": 1,
+    "февраля": 2,
+    "марта": 3,
+    "апреля": 4,
+    "мая": 5,
+    "июня": 6,
+    "июля": 7,
+    "августа": 8,
+    "сентября": 9,
+    "октября": 10,
+    "ноября": 11,
+    "декабря": 12
+}
+
+def parse_date(s):
+    matched = re.match(r"(\d*) (\w+) (\d{4})", s)
+    if not matched or len(matched.groups()) < 3:
+           return False
+    month_s = matched.group(2).lower()
+    if month_s in month_ids:
+        return (int(matched.group(1)), month_ids[month_s], int(matched.group(3)))
+    else:
+        return False
+    
+def cmp_dates(dt1, dt2):
+    if dt1[2] > dt2[2]:
+        return 1
+    elif dt1[2] < dt2[2]:
+        return -1
+    else:
+        if dt1[1] > dt2[1]:
+            return 1
+        elif dt1[1] < dt2[1]:
+            return -1
+        else:
+            if dt1[0] > dt2[0]:
+                return 1
+            elif dt1[0] < dt2[0]:
+                return -1
+            else:
+                return 0
+
 def getByURL(url):
     session = requests.Session()
     retry = Retry(connect=5, backoff_factor=1.0)
@@ -41,6 +90,7 @@ def getHolderPlaceholder(link):
         "inn": "-",
         "UNP": "-",
         "register_date": "-",
+        "register_date_parsed": "-",
         "activity_type": "-",
         "address": "-",
         "org_type": "-",
@@ -183,6 +233,7 @@ def get_ru_company_data(url):
             print("ttl: " + str(ttl))
             if (ttl == "Дата регистрации"):
                 holder["register_date"] = innerdivs[1].get_text()
+                holder["register_date_parsed"] = parse_date(holder["register_date"])
             elif (ttl == "Вид деятельности"):
                 holder["activity_type"] = innerdivs[1].get_text()
             elif (ttl == "Юридический адрес"):
@@ -273,6 +324,7 @@ def get_by_company_data(url):
             print(ttl)
             if (ttl == "Дата регистрации"):
                 holder["register_date"] = innerdivs[1].get_text()
+                holder["register_date_parsed"] = parse_date(holder["register_date"])
             if (ttl == "Основной вид деятельности"):
                 holder["activity_type"] = innerdivs[1].get_text()
             if (ttl == "Юридический адрес"):
@@ -353,7 +405,14 @@ def parse_single_companies_page(url, isRu):
             if compres == False:
                 add_output_message("Не получилось получить данные о компании")
             else:
-                lst.append(compres)
+                if not compres["register_date_parsed"]:
+                    add_output_message("Не получилось обработать дату регистрации")
+                else:
+                    date = compres["register_date_parsed"]
+                    if cmp_dates(date, min_date) != -1 and cmp_dates(date, max_date) != 1:
+                        lst.append(compres)
+                    else:
+                        add_output_message("Не выполняется условие по дате")
     
     return lst
 
@@ -501,6 +560,40 @@ def callback_active_only(sender, app_data, user_data):
     global active_only
     active_only = app_data
 
+def callback_date_filter_checkbox(sender, app_data, user_data):
+    global filter_by_date
+    if app_data:
+        dpg.show_item("day_min_filter")
+        dpg.show_item("month_min_filter")
+        dpg.show_item("year_min_filter")
+        dpg.show_item("day_max_filter")
+        dpg.show_item("month_max_filter")
+        dpg.show_item("year_max_filter")
+    else:
+        dpg.hide_item("day_min_filter")
+        dpg.hide_item("month_min_filter")
+        dpg.hide_item("year_min_filter")
+        dpg.hide_item("day_max_filter")
+        dpg.hide_item("month_max_filter")
+        dpg.hide_item("year_max_filter")
+
+    filter_by_date = app_data
+
+def callback_date_filter(sender, app_data, user_data):
+    global min_date, max_date
+    if sender == "day_min_filter":
+        min_date[0] = int(app_data)
+    elif sender == "day_max_filter":
+        max_date[0] = int(app_data)
+    elif sender == "month_min_filter":
+        min_date[1] = int(app_data)
+    elif sender == "month_max_filter":
+        max_date[1] = int(app_data)
+    elif sender == "year_min_filter":
+        min_date[2] = int(app_data)
+    elif sender == "year_max_filter":
+        max_date[2] = int(app_data)
+
 def callback_parse(sender, app_data):
     if (len(list_categories_links) == 0):
         return
@@ -508,6 +601,10 @@ def callback_parse(sender, app_data):
     try:
         add_output_message("Начат парсинг со следующими настройками:")
         add_output_message("Регион: " + regions[selected_region])
+        if filter_by_date:
+            add_output_message("Включен фильтр по датам")
+            add_output_message("От: " + str(min_date))
+            add_output_message("До: " + str(max_date))
 
         add_output_message("Выбранные виды деятельности: ")
         selected = []
@@ -596,15 +693,26 @@ with dpg.window(label="Select region (RU only)", tag="region_selector", width=61
     dpg.add_combo((), label="Регионы", tag="regionscombo", callback=select_country_region)
     dpg.add_combo((), label="Города", tag="citiescombo", callback=select_region_city)
 
-with dpg.window(label="Checko parser", width=400, height=200, pos=(2, 2)):
+with dpg.window(label="Checko parser", width=400, height=250, pos=(2, 2)):
     dpg.add_text("Выберите страну и вид деятельности")
     dpg.add_combo(("RU", "BY"), label="Страна", callback=callback_select_country)
     dpg.add_button(label="Выберите файл", callback=lambda: dpg.show_item("file_dialog_id"))
     dpg.add_text(default_value="Текущий файл: " + target_file, tag="selectedFile")
     dpg.add_checkbox(label="Только действующие организации", callback=callback_active_only)
+    dpg.add_checkbox(label="Включить фильтр по дате регистрации", callback=callback_date_filter_checkbox)
+    dpg.add_combo([i for i in range(1, 32)], label="День", default_value=current_date[0], show=False, width=50, tag="day_min_filter", callback=callback_date_filter)
+    dpg.add_same_line()
+    dpg.add_combo([i for i in range(1, 13)], label="Месяц", default_value=current_date[1], show=False, width=50, tag="month_min_filter", callback=callback_date_filter)
+    dpg.add_same_line()
+    dpg.add_combo([i for i in range(1970, current_date[2] + 1)], label="Год (минимум)", default_value=current_date[2], show=False, width=78, tag="year_min_filter", callback=callback_date_filter)
+    dpg.add_combo([i for i in range(1, 32)], label="День", default_value=current_date[0], show=False, width=50, tag="day_max_filter", callback=callback_date_filter)
+    dpg.add_same_line()
+    dpg.add_combo([i for i in range(1, 13)], label="Месяц", default_value=current_date[1], show=False, width=50, tag="month_max_filter", callback=callback_date_filter)
+    dpg.add_same_line()
+    dpg.add_combo([i for i in range(1970, current_date[2] + 1)], label="Год (максимум)", default_value=current_date[2], show=False, width=78, tag="year_max_filter", callback=callback_date_filter)
     dpg.add_button(label="СТАРТ", callback=callback_parse)
 
-with dpg.window(label="Log", width=400, height=474, pos=(2, 205)):
+with dpg.window(label="Log", width=400, height=424, pos=(2, 255)):
     dpg.add_text(default_value="",tag="outputMessage")
 
 dpg.setup_dearpygui()
