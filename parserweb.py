@@ -409,7 +409,7 @@ def parse_single_companies_page(url, isRu):
                     add_output_message("Не получилось обработать дату регистрации")
                 else:
                     date = compres["register_date_parsed"]
-                    if cmp_dates(date, min_date) != -1 and cmp_dates(date, max_date) != 1:
+                    if not filter_by_date or cmp_dates(date, min_date) != -1 and cmp_dates(date, max_date) != 1:
                         lst.append(compres)
                     else:
                         add_output_message("Не выполняется условие по дате")
@@ -700,16 +700,15 @@ with dpg.window(label="Checko parser", width=400, height=250, pos=(2, 2)):
     dpg.add_text(default_value="Текущий файл: " + target_file, tag="selectedFile")
     dpg.add_checkbox(label="Только действующие организации", callback=callback_active_only)
     dpg.add_checkbox(label="Включить фильтр по дате регистрации", callback=callback_date_filter_checkbox)
-    dpg.add_combo([i for i in range(1, 32)], label="День", default_value=current_date[0], show=False, width=50, tag="day_min_filter", callback=callback_date_filter)
-    dpg.add_same_line()
-    dpg.add_combo([i for i in range(1, 13)], label="Месяц", default_value=current_date[1], show=False, width=50, tag="month_min_filter", callback=callback_date_filter)
-    dpg.add_same_line()
-    dpg.add_combo([i for i in range(1970, current_date[2] + 1)], label="Год (минимум)", default_value=current_date[2], show=False, width=78, tag="year_min_filter", callback=callback_date_filter)
-    dpg.add_combo([i for i in range(1, 32)], label="День", default_value=current_date[0], show=False, width=50, tag="day_max_filter", callback=callback_date_filter)
-    dpg.add_same_line()
-    dpg.add_combo([i for i in range(1, 13)], label="Месяц", default_value=current_date[1], show=False, width=50, tag="month_max_filter", callback=callback_date_filter)
-    dpg.add_same_line()
-    dpg.add_combo([i for i in range(1970, current_date[2] + 1)], label="Год (максимум)", default_value=current_date[2], show=False, width=78, tag="year_max_filter", callback=callback_date_filter)
+    with dpg.group(horizontal=True):
+        dpg.add_combo([i for i in range(1, 32)], label="День", default_value=current_date[0], show=False, width=50, tag="day_min_filter", callback=callback_date_filter)
+        dpg.add_combo([i for i in range(1, 13)], label="Месяц", default_value=current_date[1], show=False, width=50, tag="month_min_filter", callback=callback_date_filter)
+        dpg.add_combo([i for i in range(1970, current_date[2] + 1)], label="Год (минимум)", default_value=current_date[2], show=False, width=78, tag="year_min_filter", callback=callback_date_filter)
+    with dpg.group(horizontal=True):
+        dpg.add_combo([i for i in range(1, 32)], label="День", default_value=current_date[0], show=False, width=50, tag="day_max_filter", callback=callback_date_filter)
+        dpg.add_combo([i for i in range(1, 13)], label="Месяц", default_value=current_date[1], show=False, width=50, tag="month_max_filter", callback=callback_date_filter)
+        dpg.add_combo([i for i in range(1970, current_date[2] + 1)], label="Год (максимум)", default_value=current_date[2], show=False, width=78, tag="year_max_filter", callback=callback_date_filter)
+
     dpg.add_button(label="СТАРТ", callback=callback_parse)
 
 with dpg.window(label="Log", width=400, height=424, pos=(2, 255)):
