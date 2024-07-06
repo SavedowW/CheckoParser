@@ -1,4 +1,7 @@
 /build/*
+/.conda/*
+/.vscode/*
+/build/*
 /dist/*
 /*.xlsx
 /*.xls

@@ -112,7 +112,7 @@ def get_activity_categories(url):
     atags = bs.find_all("a", {"class": "link"})
     links = []
     for i in atags:
-        if (i.get_text() == "каталогом"):
+        if (i.get_text() == "каталогом" or i.get_text() == "расширенный поиск"):
             continue
         links.append([i.get_text(), i.get('href'), False])
 
